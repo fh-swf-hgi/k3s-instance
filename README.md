@@ -25,39 +25,7 @@ Ziel des Projekts ist eine minimalistische, aber produktionsnahe Kubernetes-Plat
 
 ## Gesamtübersicht
 
-```text
-┌────────────────────────────────────┐
-│ Developer Machine                  │
-│                                    │
-│ git push                           │
-│ kubectl                            │
-│ ansible                            │
-│ make                               │
-└────────────────────────────────────┘
-                 │
-                 │ SSH
-                 ▼
-┌────────────────────────────────────┐
-│ Ubuntu 24.04 Host                  │
-│                                    │
-│ K3s                                │
-│ ├── Kubernetes API                 │
-│ ├── containerd                     │
-│ ├── local-path storage             │
-│ └── CoreDNS                        │
-│                                    │
-│ ingress-nginx                      │
-│ └── HTTP/HTTPS entrypoint          │
-│                                    │
-│ Argo CD                            │
-│ ├── Watches Git repository         │
-│ └── Deploys applications           │
-│                                    │
-│ Apps                               │
-│ ├── nginx demo                     │
-│ └── Langflow                       │
-└────────────────────────────────────┘
-```
+![Architektur-Übersicht](docs/architektur.png)
 
 ---
 
