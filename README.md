@@ -6,6 +6,7 @@ Ein vollständig reproduzierbares Single-Node-Kubernetes-Setup auf Basis von:
 - K3s
 - Argo CD
 - GitOps
+- ingress-nginx
 - Ansible
 - SSH
 - Makefile
@@ -37,13 +38,16 @@ Ziel des Projekts ist eine minimalistische, aber produktionsnahe Kubernetes-Plat
                  │ SSH
                  ▼
 ┌────────────────────────────────────┐
-│ Ubuntu 24.04 Host                 │
+│ Ubuntu 24.04 Host                  │
 │                                    │
 │ K3s                                │
 │ ├── Kubernetes API                 │
 │ ├── containerd                     │
 │ ├── local-path storage             │
 │ └── CoreDNS                        │
+│                                    │
+│ ingress-nginx                      │
+│ └── HTTP/HTTPS entrypoint          │
 │                                    │
 │ Argo CD                            │
 │ ├── Watches Git repository         │
@@ -80,6 +84,7 @@ Fresh Ubuntu Server
 | Ubuntu 24.04 | Basisbetriebssystem |
 | K3s | Lightweight Kubernetes |
 | Argo CD | GitOps Deployment |
+| ingress-nginx | HTTP/HTTPS Routing |
 | Ansible | Provisionierung |
 | Makefile | Vereinfachte Bedienung |
 | GitHub | Single Source of Truth |
@@ -101,11 +106,15 @@ k3s-instance/
 │   └── reset.yml
 ├── argocd/
 │   ├── demo-nginx.yaml
+│   ├── ingress-nginx.yaml
 │   └── langflow.yaml
 └── apps/
     ├── demo-nginx/
     │   ├── deployment.yaml
     │   └── service.yaml
+    ├── ingress-nginx/
+    │   ├── install.yaml
+    │   └── namespace.yaml
     └── langflow/
         ├── namespace.yaml
         ├── deployment.yaml
@@ -131,7 +140,6 @@ Beispiel:
 
 ```text
 Hostname: myhost
-IP:       192.168.1.2
 User:     hgi
 ```
 
@@ -147,6 +155,8 @@ ssh gaming
 
 Benötigte Tools auf dem lokalen Rechner:
 
+macOS:
+
 ```bash
 brew install kubectl
 brew install ansible
@@ -154,7 +164,7 @@ brew install make
 brew install git
 ```
 
-Linux:
+Ubuntu/Debian:
 
 ```bash
 sudo apt install ansible make git
@@ -249,10 +259,26 @@ KUBECONFIG=./kubeconfig kubectl get applications -n argocd
 Beispiel:
 
 ```text
-NAME         SYNC STATUS   HEALTH STATUS
-demo-nginx   Synced        Healthy
-langflow     Synced        Healthy
+NAME            SYNC STATUS   HEALTH STATUS
+demo-nginx      Synced        Healthy
+ingress-nginx   Synced        Healthy
+langflow        Synced        Healthy
 ```
+
+---
+
+# Argo CD Synchronisation
+
+Ohne GitHub-Webhook erkennt Argo CD Änderungen nicht sofort, sondern pollt periodisch das Repository.
+
+Manueller Refresh:
+
+```bash
+KUBECONFIG=./kubeconfig kubectl -n argocd annotate application langflow \
+  argocd.argoproj.io/refresh=hard --overwrite
+```
+
+Optional kann das Reconciliation-Intervall angepasst werden.
 
 ---
 
@@ -290,7 +316,7 @@ admin
 
 ## Grundidee
 
-Anwendungen werden NICHT direkt mit kubectl erstellt.
+Anwendungen werden NICHT direkt mit `kubectl apply` deployt.
 
 Stattdessen:
 
@@ -449,22 +475,6 @@ KUBECONFIG=./kubeconfig kubectl get all -n langflow
 
 ---
 
-# Port Forwarding
-
-## Langflow lokal öffnen
-
-```bash
-KUBECONFIG=./kubeconfig kubectl -n langflow port-forward svc/langflow 7860:80
-```
-
-Browser:
-
-```text
-http://localhost:7860
-```
-
----
-
 # Persistenter Storage
 
 K3s bringt standardmäßig lokalen Storage mit:
@@ -484,6 +494,95 @@ Beispiel:
 ```text
 NAME             STATUS   CAPACITY
 langflow-data    Bound    10Gi
+```
+
+---
+
+# Ingress
+
+Dieses Setup verwendet `ingress-nginx` als Ingress-Controller.
+
+Der Datenpfad ist:
+
+```text
+Browser
+→ ingress-nginx NodePort
+→ Kubernetes Service
+→ Pod
+```
+
+Da in diesem K3s-Setup `servicelb` deaktiviert wurde, wird ingress-nginx über `NodePort` betrieben.
+
+---
+
+# ingress-nginx überprüfen
+
+```bash
+KUBECONFIG=./kubeconfig kubectl get application ingress-nginx -n argocd
+KUBECONFIG=./kubeconfig kubectl get pods -n ingress-nginx
+KUBECONFIG=./kubeconfig kubectl get svc -n ingress-nginx
+```
+
+Beispiel:
+
+```text
+NAME                                 TYPE       PORT(S)
+ingress-nginx-controller             NodePort   80:30184/TCP,443:30325/TCP
+```
+
+---
+
+# Ingress-Regeln prüfen
+
+```bash
+KUBECONFIG=./kubeconfig kubectl get ingress -A
+```
+
+Beispiel:
+
+```text
+NAMESPACE   NAME       CLASS   HOSTS   PORTS
+langflow    langflow   nginx   *       80
+```
+
+Das `*` bedeutet:
+
+```text
+Kein fester Hostname erforderlich.
+```
+
+Dadurch ist Zugriff direkt per IP-Adresse möglich.
+
+---
+
+# Langflow im Browser öffnen
+
+Beispiel:
+
+```text
+http://<host-ip>:30184
+```
+
+z.B.
+
+```text
+http://192.168.1.2:30184
+```
+
+---
+
+# Port Forwarding
+
+Alternativ ohne Ingress:
+
+```bash
+KUBECONFIG=./kubeconfig kubectl -n langflow port-forward svc/langflow 7860:80
+```
+
+Browser:
+
+```text
+http://localhost:7860
 ```
 
 ---
@@ -566,6 +665,14 @@ kubectl get svc -A
 
 ---
 
+## Ingress-Ressourcen
+
+```bash
+kubectl get ingress -A
+```
+
+---
+
 ## Events
 
 ```bash
@@ -606,7 +713,6 @@ kubectl describe pod <pod-name> -n langflow
 
 ## Infrastruktur
 
-- ingress-nginx
 - cert-manager
 - HTTPS
 - DNS
