@@ -1,0 +1,52 @@
+- name: Provision single-node k3s
+  hosts: k3s
+  become: true
+
+  tasks:
+    - name: Disable swap now
+      command: swapoff -a
+      changed_when: false
+
+    - name: Disable swap permanently
+      replace:
+        path: /etc/fstab
+        regexp: '^([^#].*\sswap\s.*)$'
+        replace: '# \1'
+
+    - name: Install base packages
+      apt:
+        name:
+          - curl
+          - ca-certificates
+          - gnupg
+          - apt-transport-https
+        state: present
+        update_cache: true
+
+    - name: Create k3s config directory
+      file:
+        path: /etc/rancher/k3s
+        state: directory
+        mode: "0755"
+
+    - name: Write k3s config
+      copy:
+        dest: /etc/rancher/k3s/config.yaml
+        mode: "0600"
+        content: |
+          node-name: gaming
+          write-kubeconfig-mode: "0644"
+          disable:
+            - traefik
+            - servicelb
+
+    - name: Install k3s
+      shell: curl -sfL https://get.k3s.io | INSTALL_K3S_CHANNEL=stable sh -
+      args:
+        creates: /usr/local/bin/k3s
+
+    - name: Ensure k3s is running
+      systemd:
+        name: k3s
+        enabled: true
+        state: started

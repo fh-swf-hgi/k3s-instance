@@ -1,0 +1,40 @@
+- name: Reset single-node k3s
+  hosts: k3s
+  become: true
+
+  tasks:
+    - name: Run k3s uninstaller if present
+      shell: /usr/local/bin/k3s-uninstall.sh
+      args:
+        removes: /usr/local/bin/k3s
+
+    - name: Remove remaining k3s directories
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/rancher
+        - /var/lib/rancher
+        - /var/lib/kubelet
+        - /var/lib/cni
+        - /etc/cni
+        - /run/k3s
+        - /run/flannel
+
+    - name: Remove leftover network interfaces if present
+      shell: |
+        ip link delete cni0 2>/dev/null || true
+        ip link delete flannel.1 2>/dev/null || true
+      changed_when: false
+
+    - name: Remove leftover iptables rules best-effort
+      shell: |
+        iptables-save | grep -v KUBE- | grep -v CNI- | iptables-restore || true
+        ip6tables-save | grep -v KUBE- | grep -v CNI- | ip6tables-restore || true
+      changed_when: false
+
+    - name: Restart networking-relevant services
+      systemd:
+        name: NetworkManager
+        state: restarted
+      failed_when: false

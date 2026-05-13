@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: langflow
+  namespace: langflow
+spec:
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: langflow
+
+  template:
+    metadata:
+      labels:
+        app: langflow
+
+    spec:
+      containers:
+        - name: langflow
+          image: langflowai/langflow:latest
+
+          ports:
+            - containerPort: 7860
+
+          env:
+            - name: LANGFLOW_DATABASE_URL
+              value: sqlite:////data/langflow.db
+            - name: LANGFLOW_HOST
+              value: "0.0.0.0"
+            - name: LANGFLOW_PORT
+              value: "7860"
+
+          volumeMounts:
+            - name: data
+              mountPath: /data
+
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: langflow-data
